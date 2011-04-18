@@ -1,0 +1,171 @@
+#! /usr/bin/perl
+
+#
+# checkem - Find duplicate files with standard Perl libraries
+#
+# Tom Ryder (tejr) 2011
+#
+# This script parses a whole directory tree for duplicate files. It uses an
+# efficient method of checking filesizes first, and hashing only when
+# filesizes match. It returns files that are duplicates in groups delineated
+# by blank lines to stdout.
+#
+# Optional first argument is the directory tree to scan. Defaults to pwd.
+# Optional remaining arguments are filename regexes to exclude. Defaults to 
+# null.
+#
+
+# Force me to write this properly.
+use warnings;
+use strict;
+
+# Get the find and current working directory modules.
+use File::Find;
+use Cwd;
+
+# Initialise global directory name scalar.
+my $dir;
+
+# Initialise a couple of important global-scope hashes.
+my (%sizes, %matches);
+
+# Open output as stdout. You could change this, but it's easier just to pipe it.
+open OUTPUT, '>>', '/dev/stdout';
+
+# If no arguments, work with the current working directory.
+if (! $ARGV[0]) {
+	$dir = cwd;
+}
+
+# If arguments, check for existence, then confirm as directory to scan.
+elsif (-d $ARGV[0]) {
+	$dir = shift @ARGV;
+}
+
+# If it doesn't exist, halt.
+else {
+	print 'Directory '.$ARGV[0].' not found.'."\n";
+	exit 1;
+}
+
+# Any further arguments are regex exclusions. This could very well be null. That's fine.
+my @exclusions = @ARGV;
+
+# Declare a sub that returns filesizes.
+sub filesize {
+	return (stat(shift))[7];
+}
+
+# Declare a sub that returns inodes.
+sub inode {
+	return (stat(shift))[1];
+}
+
+# Declare a sub that returns checksums.
+sub checksum {
+	my $file = shift;
+	return substr(`md5sum "$file"`, 0, 32);
+}
+
+# Declare the wanted sub ...
+sub wanted {
+
+	# If it's a file ...
+	if (-f $File::Find::name)
+	{
+		# Just to make this easier ...
+		my $file = $File::Find::name;
+		
+		# Check it doesn't match any exclusions.
+		my $exclude = 0;
+		foreach my $exclusion (@exclusions) {
+			$exclude = 1 if ($file =~ m/$exclusion/);
+		}
+
+		# No? Good! Start processing it.
+		if (! $exclude)
+		{
+			# Get filesize and add it to hash.
+			my $size = filesize($file);
+			$sizes{ $file } = $size;
+		
+			# Start a matches array reference.
+			$matches{ $file } = [ ];
+		}
+	}
+}
+
+# ... and start the find process on the directory!
+find \&wanted, $dir;
+
+# Get a sorted list of the sizes keys by filesize. This groups them nicely.
+my @files_sorted = sort {$sizes{$a} <=> $sizes{$b}} keys %sizes;
+
+# Start with an impossible filesize and a null filename.
+my $any_matches = 0;
+my $current_size = -1;
+my $current_matching;
+
+# For each of the files in that sorted array,
+foreach my $file (@files_sorted) {
+
+	# ... check that:
+	if (
+		# The filesizes according to the %sizes hash match;
+		$sizes{$file} == $current_size
+			and 
+		# ... they aren't the same inode, in which case it's probably an intentional hard link;
+		inode($current_matching) != inode($file)
+			and
+		# ... the MD5 hashes match.
+		checksum($current_matching) eq checksum($file)
+	)
+	{
+		# If so, conclude it's a duplicate, and add it to the matches for this file.
+		$any_matches = 1;
+		push @{$matches{$current_matching}}, $file;
+	}
+
+	# Otherwise, start a new group and keep iterating.
+	else
+	{
+		$current_matching = $file;
+		$current_size = $sizes{$file}
+	}
+}
+
+# The flag for any matches is still false? Success!
+if (! $any_matches) {
+	print 'No matches.', "\n";
+	exit 0;
+}
+
+# We don't need these now.
+undef $any_matches;
+undef $current_matching;
+undef $current_size;
+undef $dir;
+undef @exclusions;
+undef @files_sorted;
+undef %sizes;
+
+# Start printing some output.
+print OUTPUT "\n", 'Summary of matches:', "\n\n";
+
+# Print each group of duplicate files!
+foreach my $match (keys %matches) {
+	# Glean the matches for this file by dereferencing that array reference from the matches hash.
+	my @this_matches = @{$matches{$match}};
+
+	# If there are matches, print them.
+	if ($#this_matches > -1) {
+		print OUTPUT $match, "\n";
+		print OUTPUT $_, "\n" foreach (@this_matches);
+		print OUTPUT "\n";
+	}
+}
+
+# Close the output, whatever it is, and we're done.
+close OUTPUT;
+exit 0;
+
