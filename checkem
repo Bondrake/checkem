@@ -34,18 +34,18 @@ open OUTPUT, '>>', '/dev/stdout';
 
 # If no arguments, work with the current working directory.
 if (! $ARGV[0]) {
-	$dir = cwd;
+    $dir = cwd;
 }
 
 # If arguments, check for existence, then confirm as directory to scan.
 elsif (-d $ARGV[0]) {
-	$dir = shift @ARGV;
+    $dir = shift @ARGV;
 }
 
 # If it doesn't exist, halt.
 else {
-	print 'Directory '.$ARGV[0].' not found.'."\n";
-	exit 1;
+    print 'Directory '.$ARGV[0].' not found.'."\n";
+    exit 1;
 }
 
 # Any further arguments are regex exclusions. This could very well be null. That's fine.
@@ -53,46 +53,46 @@ my @exclusions = @ARGV;
 
 # Declare a sub that returns filesizes.
 sub filesize {
-	return (stat(shift))[7];
+    return (stat(shift))[7];
 }
 
 # Declare a sub that returns inodes.
 sub inode {
-	return (stat(shift))[1];
+    return (stat(shift))[1];
 }
 
 # Declare a sub that returns checksums.
 sub checksum {
-	my $file = shift;
-	return substr(`md5sum "$file"`, 0, 32);
+    my $file = shift;
+    return substr(`md5sum "$file"`, 0, 32);
 }
 
 # Declare the wanted sub ...
 sub wanted {
 
-	# If it's a file ...
-	if (-f $File::Find::name)
-	{
-		# Just to make this easier ...
-		my $file = $File::Find::name;
-		
-		# Check it doesn't match any exclusions.
-		my $exclude = 0;
-		foreach my $exclusion (@exclusions) {
-			$exclude = 1 if ($file =~ m/$exclusion/);
-		}
+    # If it's a file ...
+    if (-f $File::Find::name)
+    {
+        # Just to make this easier ...
+        my $file = $File::Find::name;
+        
+        # Check it doesn't match any exclusions.
+        my $exclude = 0;
+        foreach my $exclusion (@exclusions) {
+            $exclude = 1 if ($file =~ m/$exclusion/);
+        }
 
-		# No? Good! Start processing it.
-		if (! $exclude)
-		{
-			# Get filesize and add it to hash.
-			my $size = filesize($file);
-			$sizes{ $file } = $size;
-		
-			# Start a matches array reference.
-			$matches{ $file } = [ ];
-		}
-	}
+        # No? Good! Start processing it.
+        if (! $exclude)
+        {
+            # Get filesize and add it to hash.
+            my $size = filesize($file);
+            $sizes{ $file } = $size;
+        
+            # Start a matches array reference.
+            $matches{ $file } = [ ];
+        }
+    }
 }
 
 # ... and start the find process on the directory!
@@ -109,35 +109,35 @@ my $current_matching;
 # For each of the files in that sorted array,
 foreach my $file (@files_sorted) {
 
-	# ... check that:
-	if (
-		# The filesizes according to the %sizes hash match;
-		$sizes{$file} == $current_size
-			and 
-		# ... they aren't the same inode, in which case it's probably an intentional hard link;
-		inode($current_matching) != inode($file)
-			and
-		# ... the MD5 hashes match.
-		checksum($current_matching) eq checksum($file)
-	)
-	{
-		# If so, conclude it's a duplicate, and add it to the matches for this file.
-		$any_matches = 1;
-		push @{$matches{$current_matching}}, $file;
-	}
+    # ... check that:
+    if (
+        # The filesizes according to the %sizes hash match;
+        $sizes{$file} == $current_size
+            and 
+        # ... they aren't the same inode, in which case it's probably an intentional hard link;
+        inode($current_matching) != inode($file)
+            and
+        # ... the MD5 hashes match.
+        checksum($current_matching) eq checksum($file)
+    )
+    {
+        # If so, conclude it's a duplicate, and add it to the matches for this file.
+        $any_matches = 1;
+        push @{$matches{$current_matching}}, $file;
+    }
 
-	# Otherwise, start a new group and keep iterating.
-	else
-	{
-		$current_matching = $file;
-		$current_size = $sizes{$file}
-	}
+    # Otherwise, start a new group and keep iterating.
+    else
+    {
+        $current_matching = $file;
+        $current_size = $sizes{$file}
+    }
 }
 
 # The flag for any matches is still false? Success!
 if (! $any_matches) {
-	print 'No matches.', "\n";
-	exit 0;
+    print 'No matches.', "\n";
+    exit 0;
 }
 
 # We don't need these now.
@@ -154,15 +154,15 @@ print OUTPUT "\n", 'Summary of matches:', "\n\n";
 
 # Print each group of duplicate files!
 foreach my $match (keys %matches) {
-	# Glean the matches for this file by dereferencing that array reference from the matches hash.
-	my @this_matches = @{$matches{$match}};
+    # Glean the matches for this file by dereferencing that array reference from the matches hash.
+    my @this_matches = @{$matches{$match}};
 
-	# If there are matches, print them.
-	if ($#this_matches > -1) {
-		print OUTPUT $match, "\n";
-		print OUTPUT $_, "\n" foreach (@this_matches);
-		print OUTPUT "\n";
-	}
+    # If there are matches, print them.
+    if ($#this_matches > -1) {
+        print OUTPUT $match, "\n";
+        print OUTPUT $_, "\n" foreach (@this_matches);
+        print OUTPUT "\n";
+    }
 }
 
 # Close the output, whatever it is, and we're done.
